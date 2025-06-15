@@ -1,14 +1,15 @@
 {
   "configurations": [
     {
-      "name": "windows-gcc-x86",
+      "name": "Linux",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/**",
+        "/usr/include/opencv4"
       ],
-      "compilerPath": "C:/MinGW/bin/gcc.exe",
+      "compilerPath": "/usr/bin/g++",
       "cStandard": "${default}",
       "cppStandard": "${default}",
-      "intelliSenseMode": "windows-gcc-x86",
+      "intelliSenseMode": "linux-gcc-x64",
       "compilerArgs": [
         ""
       ]
