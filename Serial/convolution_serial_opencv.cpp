@@ -47,8 +47,8 @@ Mat applyConvolution(const Mat &input, const Matrix &kernel)
 
 int main()
 {
-    string input_file = "images/input.png";
-    string output_file = "results/output_serial.png";
+    string input_file = "../Images/input.png";
+    string output_file = "../Results/output_serial.png";
 
     // Load image in grayscale
     Mat img = imread(input_file, IMREAD_GRAYSCALE);
