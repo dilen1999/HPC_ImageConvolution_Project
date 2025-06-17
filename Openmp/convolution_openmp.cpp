@@ -138,9 +138,9 @@ int main() {
 
     // Define kernel (e.g., edge detection)
     Matrix kernel = {
-        {-1, -1, -1},
-        {-1,  8, -1},
-        {-1, -1, -1}
+        {0, -1, 0},
+        {-1,  5, -1},
+        {0, -1, 0}
     };
 
     auto start = high_resolution_clock::now();
