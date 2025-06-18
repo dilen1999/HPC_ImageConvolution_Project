@@ -60,3 +60,5 @@ g++ -fopenmp Kernels/convolution_openmp.cpp -o openmp_convolution `pkg-config --
 ```bash
 ./openmp_convolution
 ````
+###  Final results different between serial and openmp
+![Image](https://github.com/user-attachments/assets/3c5c72b2-3ee8-405d-9e41-9159a69fab45)
