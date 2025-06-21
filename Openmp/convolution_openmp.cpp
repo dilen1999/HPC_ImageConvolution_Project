@@ -11,33 +11,26 @@ using namespace std::chrono;
 typedef vector<vector<float>> Matrix;
 
 // Clamp helper
-uchar clamp(float val)
-{
+uchar clamp(float val) {
     return min(255.0f, max(0.0f, val));
 }
 
 // Apply convolution with OpenMP
-Mat applyConvolution(const Mat &input, const Matrix &kernel)
-{
+Mat applyConvolution(const Mat& input, const Matrix& kernel) {
     int kSize = kernel.size();
     int offset = kSize / 2;
     Mat output = input.clone();
 
-// Parallel outer loop (rows)
-#pragma omp parallel for
-    for (int i = 0; i < input.rows; ++i)
-    {
-        for (int j = 0; j < input.cols; ++j)
-        {
+    // Parallel outer loop (rows)
+    #pragma omp parallel for
+    for (int i = 0; i < input.rows; ++i) {
+        for (int j = 0; j < input.cols; ++j) {
             float sum = 0.0f;
-            for (int ki = 0; ki < kSize; ++ki)
-            {
-                for (int kj = 0; kj < kSize; ++kj)
-                {
+            for (int ki = 0; ki < kSize; ++ki) {
+                for (int kj = 0; kj < kSize; ++kj) {
                     int ni = i + ki - offset;
                     int nj = j + kj - offset;
-                    if (ni >= 0 && ni < input.rows && nj >= 0 && nj < input.cols)
-                    {
+                    if (ni >= 0 && ni < input.rows && nj >= 0 && nj < input.cols) {
                         sum += kernel[ki][kj] * input.at<uchar>(ni, nj);
                     }
                 }
@@ -49,24 +42,23 @@ Mat applyConvolution(const Mat &input, const Matrix &kernel)
     return output;
 }
 
-int main()
-{
+int main() {
     string input_file = "../Images/input.png";
     string output_file = "../Results/output_openmp.png";
 
     // Load image in grayscale
     Mat img = imread(input_file, IMREAD_GRAYSCALE);
-    if (img.empty())
-    {
+    if (img.empty()) {
         cerr << "Error loading image!" << endl;
         return -1;
     }
 
     // Define kernel (e.g., edge detection)
     Matrix kernel = {
-        {-1, -1, -1},
-        {-1, 8, -1},
-        {-1, -1, -1}};
+        {0, -1, 0},
+        {-1,  5, -1},
+        {0, -1, 0}
+    };
 
     auto start = high_resolution_clock::now();
     Mat result = applyConvolution(img, kernel);
