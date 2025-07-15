@@ -1,20 +1,19 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <vector>
-#include <omp.h> // OpenMP for parallel processing and omp_get_wtime()
+#include <omp.h> // OpenMP
 
 using namespace std;
 using namespace cv;
 
-// Type alias for 2D kernel
 typedef vector<vector<float>> Matrix;
 
-// Clamp to ensure pixel values stay within 0–255
+// Clamp helper
 uchar clamp(float val) {
     return min(255.0f, max(0.0f, val));
 }
 
-// Convolution with OpenMP parallelism
+// Apply convolution with OpenMP
 Mat applyConvolution(const Mat& input, const Matrix& kernel) {
     int kSize = kernel.size();
     int offset = kSize / 2;
@@ -31,14 +30,12 @@ Mat applyConvolution(const Mat& input, const Matrix& kernel) {
                     int nj = j + kj - offset;
 
                     if (ni >= 0 && ni < input.rows && nj >= 0 && nj < input.cols) {
-                        const uchar* inputRow = input.ptr<uchar>(ni);
-                        sum += kernel[ki][kj] * inputRow[nj];
+                        sum += kernel[ki][kj] * input.at<uchar>(ni, nj);
                     }
                 }
             }
 
-            uchar* outputRow = output.ptr<uchar>(i);
-            outputRow[j] = clamp(sum);
+            output.at<uchar>(i, j) = clamp(sum);
         }
     }
 
@@ -47,32 +44,59 @@ Mat applyConvolution(const Mat& input, const Matrix& kernel) {
 
 int main() {
     string input_file = "../Images/input.png";
-    string output_file = "../Results/output_openmp.png";
 
-    // Load grayscale image
+    // Load image
     Mat img = imread(input_file, IMREAD_GRAYSCALE);
     if (img.empty()) {
-        cerr << "Error loading image!" << endl;
+        cerr << " Error loading image!" << endl;
         return -1;
     }
 
-    // Define a sharpening kernel
-    Matrix kernel = {
-        { 0, -1,  0},
-        {-1,  5, -1},
-        { 0, -1,  0}
+    cout << " Input image loaded: " << img.rows << " x " << img.cols << endl;
+    cout << " OpenMP threads: " << omp_get_max_threads() << endl;
+
+    // 1️ Sharpen kernel
+    Matrix sharpenKernel = {
+        {0, -1, 0},
+        {-1, 5, -1},
+        {0, -1, 0}
     };
 
-    // Time the convolution using omp_get_wtime
-    double start = omp_get_wtime();
-    Mat result = applyConvolution(img, kernel);
-    double end = omp_get_wtime();
+    double start1 = omp_get_wtime();
+    Mat sharpenResult = applyConvolution(img, sharpenKernel);
+    double end1 = omp_get_wtime();
+    imwrite("../Results/output_openmp_sharpen.png", sharpenResult);
+    cout << " Sharpen filter: " << (end1 - start1) << " sec, Threads: "
+         << omp_get_max_threads() << endl;
 
-    // Save result
-    imwrite(output_file, result);
+    // 2️ Blur kernel
+    Matrix blurKernel = {
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9}
+    };
 
-    cout << "OpenMP Convolution completed in " << (end - start) << " seconds using "
-         << omp_get_max_threads() << " threads." << endl;
+    double start2 = omp_get_wtime();
+    Mat blurResult = applyConvolution(img, blurKernel);
+    double end2 = omp_get_wtime();
+    imwrite("../Results/output_openmp_blur.png", blurResult);
+    cout << " Blur filter: " << (end2 - start2) << " sec, Threads: "
+         << omp_get_max_threads() << endl;
 
+    // 3️ Edge detection kernel
+    Matrix edgeKernel = {
+        {-1, -1, -1},
+        {-1,  8, -1},
+        {-1, -1, -1}
+    };
+
+    double start3 = omp_get_wtime();
+    Mat edgeResult = applyConvolution(img, edgeKernel);
+    double end3 = omp_get_wtime();
+    imwrite("../Results/output_openmp_edge.png", edgeResult);
+    cout << " Edge filter: " << (end3 - start3) << " sec, Threads: "
+         << omp_get_max_threads() << endl;
+
+    cout << " All OpenMP filters done!" << endl;
     return 0;
 }

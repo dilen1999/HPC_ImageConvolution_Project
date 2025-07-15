@@ -48,30 +48,58 @@ Mat applyConvolution(const Mat &input, const Matrix &kernel)
 int main()
 {
     string input_file = "../Images/input.png";
-    string output_file = "../Results/output_serial.png";
-
-    // Load image in grayscale
     Mat img = imread(input_file, IMREAD_GRAYSCALE);
     if (img.empty())
     {
-        cerr << "Error loading image!" << endl;
+        cerr << " Error loading image!" << endl;
         return -1;
     }
 
-    // Define kernel (sharpen)
-    Matrix kernel = {
+    cout << " Input image loaded: " << img.rows << " x " << img.cols << endl;
+
+    // ------------------------------
+    // 1️ Sharpen kernel
+    Matrix sharpenKernel = {
         {0, -1, 0},
         {-1, 5, -1},
         {0, -1, 0}};
 
-    auto start = high_resolution_clock::now();
-    Mat result = applyConvolution(img, kernel);
-    auto end = high_resolution_clock::now();
+    auto start1 = high_resolution_clock::now();
+    Mat sharpenResult = applyConvolution(img, sharpenKernel);
+    auto end1 = high_resolution_clock::now();
+    imwrite("../Results/output_serial_sharpen.png", sharpenResult);
+    duration<double> diff1 = end1 - start1;
+    cout << " Sharpen filter completed in " << diff1.count() << " seconds." << endl;
 
-    imwrite(output_file, result);
+    // ------------------------------
+    // 2️ Blur kernel (simple box blur)
+    Matrix blurKernel = {
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9}};
 
-    duration<double> diff = end - start;
-    cout << "Convolution completed in " << diff.count() << " seconds." << endl;
+    auto start2 = high_resolution_clock::now();
+    Mat blurResult = applyConvolution(img, blurKernel);
+    auto end2 = high_resolution_clock::now();
+    imwrite("../Results/output_serial_blur.png", blurResult);
+    duration<double> diff2 = end2 - start2;
+    cout << " Blur filter completed in " << diff2.count() << " seconds." << endl;
+
+    // ------------------------------
+    // 3️ Edge detection kernel
+    Matrix edgeKernel = {
+        {-1, -1, -1},
+        {-1,  8, -1},
+        {-1, -1, -1}};
+
+    auto start3 = high_resolution_clock::now();
+    Mat edgeResult = applyConvolution(img, edgeKernel);
+    auto end3 = high_resolution_clock::now();
+    imwrite("../Results/output_serial_edge.png", edgeResult);
+    duration<double> diff3 = end3 - start3;
+    cout << " Edge detection filter completed in " << diff3.count() << " seconds." << endl;
+
+    cout << " All filters done. Check your Results folder!" << endl;
 
     return 0;
 }
