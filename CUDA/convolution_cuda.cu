@@ -32,50 +32,16 @@ __global__ void cudaConvolution(uchar* input, uchar* output, float* kernel, int 
     }
 }
 
-int main() {
-    string input_file = "../Images/input.png";
-    string output_file = "../Results/output_cuda.png";
-
-    Mat img = imread(input_file, IMREAD_GRAYSCALE);
-    if (img.empty()) {
-        cerr << "❌ Error loading image: " << input_file << endl;
-        return -1;
-    }
-
-    int rows = img.rows, cols = img.cols;
-    cout << "✅ Input image size: " << rows << " x " << cols << endl;
-
+void runFilter(const Mat& img, const float* h_kernel, const string& filterName, int rows, int cols) {
     size_t imgSize = rows * cols * sizeof(uchar);
     size_t kernelSize = 3 * 3 * sizeof(float);
-
-    float h_kernel[9] = {
-         0, -1,  0,
-        -1,  5, -1,
-         0, -1,  0
-    };
 
     uchar *d_input, *d_output;
     float *d_kernel;
 
-    cudaError_t err;
-
-    err = cudaMalloc((void**)&d_input, imgSize);
-    if (err != cudaSuccess) {
-        cerr << "❌ cudaMalloc d_input failed: " << cudaGetErrorString(err) << endl;
-        return -1;
-    }
-
-    err = cudaMalloc((void**)&d_output, imgSize);
-    if (err != cudaSuccess) {
-        cerr << "❌ cudaMalloc d_output failed: " << cudaGetErrorString(err) << endl;
-        return -1;
-    }
-
-    err = cudaMalloc((void**)&d_kernel, kernelSize);
-    if (err != cudaSuccess) {
-        cerr << "❌ cudaMalloc d_kernel failed: " << cudaGetErrorString(err) << endl;
-        return -1;
-    }
+    cudaMalloc((void**)&d_input, imgSize);
+    cudaMalloc((void**)&d_output, imgSize);
+    cudaMalloc((void**)&d_kernel, kernelSize);
 
     cudaMemcpy(d_input, img.data, imgSize, cudaMemcpyHostToDevice);
     cudaMemcpy(d_kernel, h_kernel, kernelSize, cudaMemcpyHostToDevice);
@@ -84,10 +50,6 @@ int main() {
     dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
                        (rows + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
-    cout << "✅ Launching CUDA kernel with grid: (" << blocksPerGrid.x << ", " << blocksPerGrid.y
-         << ") blocks, block: (" << threadsPerBlock.x << ", " << threadsPerBlock.y << ") threads\n";
-
-    // Timing
     cudaEvent_t start, stop;
     float milliseconds = 0;
     cudaEventCreate(&start);
@@ -95,12 +57,6 @@ int main() {
     cudaEventRecord(start);
 
     cudaConvolution<<<blocksPerGrid, threadsPerBlock>>>(d_input, d_output, d_kernel, rows, cols, 3);
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        cerr << "❌ CUDA kernel launch failed: " << cudaGetErrorString(err) << endl;
-        return -1;
-    }
-
     cudaDeviceSynchronize();
 
     cudaEventRecord(stop);
@@ -110,19 +66,51 @@ int main() {
     Mat result(rows, cols, CV_8UC1);
     cudaMemcpy(result.data, d_output, imgSize, cudaMemcpyDeviceToHost);
 
-    bool ok = imwrite(output_file, result);
-    if (!ok) {
-        cerr << "❌ Failed to save output image to: " << output_file << endl;
-        return -1;
-    }
-
-    cout << "✅ Output saved to: " << output_file << endl;
+    string output_file = "../Results/output_cuda_" + filterName + ".png";
+    imwrite(output_file, result);
+    cout << " CUDA " << filterName << " filter done: " << milliseconds / 1000.0 << " sec. Saved to " << output_file << endl;
 
     cudaFree(d_input);
     cudaFree(d_output);
     cudaFree(d_kernel);
+}
 
-    cout << "✅ CUDA Convolution completed in " << milliseconds / 1000.0 << " seconds." << endl;
+int main() {
+    string input_file = "../Images/input.png";
+    Mat img = imread(input_file, IMREAD_GRAYSCALE);
+    if (img.empty()) {
+        cerr << " Error loading image!" << endl;
+        return -1;
+    }
+
+    int rows = img.rows, cols = img.cols;
+    cout << " Input image size: " << rows << " x " << cols << endl;
+
+    // 1️ Sharpen
+    float sharpenKernel[9] = {
+         0, -1,  0,
+        -1,  5, -1,
+         0, -1,  0
+    };
+    runFilter(img, sharpenKernel, "sharpen", rows, cols);
+
+    // 2️ Blur
+    float blurKernel[9] = {
+        1.0/9, 1.0/9, 1.0/9,
+        1.0/9, 1.0/9, 1.0/9,
+        1.0/9, 1.0/9, 1.0/9
+    };
+    runFilter(img, blurKernel, "blur", rows, cols);
+
+    // 3️ Edge
+    float edgeKernel[9] = {
+        -1, -1, -1,
+        -1,  8, -1,
+        -1, -1, -1
+    };
+    runFilter(img, edgeKernel, "edge", rows, cols);
+
+    cout << " All CUDA filters done!" << endl;
 
     return 0;
 }
