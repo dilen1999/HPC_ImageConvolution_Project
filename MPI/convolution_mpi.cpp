@@ -8,12 +8,10 @@ using namespace cv;
 
 typedef vector<vector<float>> Matrix;
 
-// Clamp to keep pixel values in range
 uchar clamp(float val) {
     return min(255.0f, max(0.0f, val));
 }
 
-// Apply convolution for given rows
 void applyConvolution(const Mat& input, Mat& output, const Matrix& kernel, int startRow, int endRow) {
     int kSize = kernel.size();
     int offset = kSize / 2;
@@ -21,18 +19,15 @@ void applyConvolution(const Mat& input, Mat& output, const Matrix& kernel, int s
     for (int i = startRow; i < endRow; ++i) {
         for (int j = 0; j < input.cols; ++j) {
             float sum = 0.0f;
-
             for (int ki = 0; ki < kSize; ++ki) {
                 for (int kj = 0; kj < kSize; ++kj) {
                     int ni = i + ki - offset;
                     int nj = j + kj - offset;
-
                     if (ni >= 0 && ni < input.rows && nj >= 0 && nj < input.cols) {
                         sum += kernel[ki][kj] * input.at<uchar>(ni, nj);
                     }
                 }
             }
-
             output.at<uchar>(i - startRow, j) = clamp(sum);
         }
     }
@@ -43,14 +38,6 @@ int main(int argc, char** argv) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    double start_time = MPI_Wtime();
-
-    Matrix kernel = {
-        {0, -1, 0},
-        {-1, 5, -1},
-        {0, -1, 0}
-    };
 
     Mat inputImage;
     int rows = 0, cols = 0;
@@ -75,30 +62,26 @@ int main(int argc, char** argv) {
     int startRow = rank * chunkSize + min(rank, extra);
     int localRows = chunkSize + (rank < extra ? 1 : 0);
 
-    // Add halo rows if not at image edge
     int haloTop = (startRow == 0) ? 0 : 1;
     int haloBottom = ((startRow + localRows) >= rows) ? 0 : 1;
     int totalRows = localRows + haloTop + haloBottom;
 
     Mat localInput(totalRows, cols, CV_8UC1);
-    Mat localOutput(localRows, cols, CV_8UC1);
 
     if (rank == 0) {
         for (int r = 0; r < size; ++r) {
             int sRow = r * chunkSize + min(r, extra);
             int lRows = chunkSize + (r < extra ? 1 : 0);
-
             int hTop = (sRow == 0) ? 0 : 1;
             int hBottom = ((sRow + lRows) >= rows) ? 0 : 1;
 
             for (int i = -hTop; i < lRows + hBottom; ++i) {
                 int realRow = sRow + i;
-
                 Mat rowToSend;
                 if (realRow < 0)
-                    rowToSend = inputImage.row(0).clone();  // replicate top row
+                    rowToSend = inputImage.row(0).clone();
                 else if (realRow >= rows)
-                    rowToSend = inputImage.row(rows - 1).clone(); // replicate bottom row
+                    rowToSend = inputImage.row(rows - 1).clone();
                 else
                     rowToSend = inputImage.row(realRow).clone();
 
@@ -114,27 +97,71 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Apply convolution only on the inner chunk (skip halo)
-    applyConvolution(localInput, localOutput, kernel, haloTop, totalRows - haloBottom);
+    // -----------------------------
+    // 1️ Sharpen
+    Matrix sharpenKernel = {
+        {0, -1, 0},
+        {-1, 5, -1},
+        {0, -1, 0}
+    };
 
-    if (rank == 0) {
-        Mat fullResult(rows, cols, CV_8UC1);
-        localOutput.copyTo(fullResult.rowRange(startRow, startRow + localRows));
+    Mat localSharpen(localRows, cols, CV_8UC1);
+    double t1 = MPI_Wtime();
+    applyConvolution(localInput, localSharpen, sharpenKernel, haloTop, totalRows - haloBottom);
+    double t2 = MPI_Wtime();
+    cout << " Rank " << rank << " Sharpen time: " << (t2 - t1) << " sec" << endl;
 
-        for (int r = 1; r < size; ++r) {
-            int sRow = r * chunkSize + min(r, extra);
-            int lRows = chunkSize + (r < extra ? 1 : 0);
-            Mat temp(lRows, cols, CV_8UC1);
-            MPI_Recv(temp.ptr(), lRows * cols, MPI_UNSIGNED_CHAR, r, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            temp.copyTo(fullResult.rowRange(sRow, sRow + lRows));
+    // -----------------------------
+    // 2️ Blur
+    Matrix blurKernel = {
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9},
+        {1.0/9, 1.0/9, 1.0/9}
+    };
+
+    Mat localBlur(localRows, cols, CV_8UC1);
+    t1 = MPI_Wtime();
+    applyConvolution(localInput, localBlur, blurKernel, haloTop, totalRows - haloBottom);
+    t2 = MPI_Wtime();
+    cout << " Rank " << rank << " Blur time: " << (t2 - t1) << " sec" << endl;
+
+    // -----------------------------
+    // 3️ Edge
+    Matrix edgeKernel = {
+        {-1, -1, -1},
+        {-1, 8, -1},
+        {-1, -1, -1}
+    };
+
+    Mat localEdge(localRows, cols, CV_8UC1);
+    t1 = MPI_Wtime();
+    applyConvolution(localInput, localEdge, edgeKernel, haloTop, totalRows - haloBottom);
+    t2 = MPI_Wtime();
+    cout << " Rank " << rank << " Edge time: " << (t2 - t1) << " sec" << endl;
+
+    // Gather and save results for each filter
+    for (string filter : {"sharpen", "blur", "edge"}) {
+        Mat* localOutput;
+        if (filter == "sharpen") localOutput = &localSharpen;
+        else if (filter == "blur") localOutput = &localBlur;
+        else localOutput = &localEdge;
+
+        if (rank == 0) {
+            Mat fullResult(rows, cols, CV_8UC1);
+            localOutput->copyTo(fullResult.rowRange(startRow, startRow + localRows));
+            for (int r = 1; r < size; ++r) {
+                int sRow = r * chunkSize + min(r, extra);
+                int lRows = chunkSize + (r < extra ? 1 : 0);
+                Mat temp(lRows, cols, CV_8UC1);
+                MPI_Recv(temp.ptr(), lRows * cols, MPI_UNSIGNED_CHAR, r, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                temp.copyTo(fullResult.rowRange(sRow, sRow + lRows));
+            }
+            string filename = "../Results/output_mpi_" + filter + ".png";
+            imwrite(filename, fullResult);
+            cout << " Saved " << filename << endl;
+        } else {
+            MPI_Send(localOutput->ptr(), localRows * cols, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
         }
-
-        imwrite("../Results/output_mpi.png", fullResult);
-
-        double end_time = MPI_Wtime();
-        cout << " MPI Convolution completed in " << (end_time - start_time) << " seconds." << endl;
-    } else {
-        MPI_Send(localOutput.ptr(), localRows * cols, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
     }
 
     MPI_Finalize();
