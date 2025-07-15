@@ -38,11 +38,13 @@ int main() {
 
     Mat img = imread(input_file, IMREAD_GRAYSCALE);
     if (img.empty()) {
-        cerr << "❌ Error loading image!" << endl;
+        cerr << "❌ Error loading image: " << input_file << endl;
         return -1;
     }
 
     int rows = img.rows, cols = img.cols;
+    cout << "✅ Input image size: " << rows << " x " << cols << endl;
+
     size_t imgSize = rows * cols * sizeof(uchar);
     size_t kernelSize = 3 * 3 * sizeof(float);
 
@@ -52,22 +54,40 @@ int main() {
          0, -1,  0
     };
 
-    // Allocate device memory
     uchar *d_input, *d_output;
     float *d_kernel;
 
-    cudaMalloc((void**)&d_input, imgSize);
-    cudaMalloc((void**)&d_output, imgSize);
-    cudaMalloc((void**)&d_kernel, kernelSize);
+    cudaError_t err;
+
+    err = cudaMalloc((void**)&d_input, imgSize);
+    if (err != cudaSuccess) {
+        cerr << "❌ cudaMalloc d_input failed: " << cudaGetErrorString(err) << endl;
+        return -1;
+    }
+
+    err = cudaMalloc((void**)&d_output, imgSize);
+    if (err != cudaSuccess) {
+        cerr << "❌ cudaMalloc d_output failed: " << cudaGetErrorString(err) << endl;
+        return -1;
+    }
+
+    err = cudaMalloc((void**)&d_kernel, kernelSize);
+    if (err != cudaSuccess) {
+        cerr << "❌ cudaMalloc d_kernel failed: " << cudaGetErrorString(err) << endl;
+        return -1;
+    }
 
     cudaMemcpy(d_input, img.data, imgSize, cudaMemcpyHostToDevice);
     cudaMemcpy(d_kernel, h_kernel, kernelSize, cudaMemcpyHostToDevice);
 
-    // Define grid/block dimensions
     dim3 threadsPerBlock(16, 16);
-    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
+    dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (rows + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
-    // Time execution
+    cout << "✅ Launching CUDA kernel with grid: (" << blocksPerGrid.x << ", " << blocksPerGrid.y
+         << ") blocks, block: (" << threadsPerBlock.x << ", " << threadsPerBlock.y << ") threads\n";
+
+    // Timing
     cudaEvent_t start, stop;
     float milliseconds = 0;
     cudaEventCreate(&start);
@@ -75,18 +95,29 @@ int main() {
     cudaEventRecord(start);
 
     cudaConvolution<<<blocksPerGrid, threadsPerBlock>>>(d_input, d_output, d_kernel, rows, cols, 3);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        cerr << "❌ CUDA kernel launch failed: " << cudaGetErrorString(err) << endl;
+        return -1;
+    }
+
     cudaDeviceSynchronize();
 
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    // Copy back result
     Mat result(rows, cols, CV_8UC1);
     cudaMemcpy(result.data, d_output, imgSize, cudaMemcpyDeviceToHost);
-    imwrite(output_file, result);
 
-    // Free memory
+    bool ok = imwrite(output_file, result);
+    if (!ok) {
+        cerr << "❌ Failed to save output image to: " << output_file << endl;
+        return -1;
+    }
+
+    cout << "✅ Output saved to: " << output_file << endl;
+
     cudaFree(d_input);
     cudaFree(d_output);
     cudaFree(d_kernel);
