@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <vector>
-#include <omp.h> // OpenMP
+#include <omp.h> 
 
 using namespace std;
 using namespace cv;
