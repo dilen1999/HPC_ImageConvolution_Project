@@ -1,64 +1,153 @@
-## High-Performance Parallel Image Convolution Filters Using Serial, OpenMP, MPI, CUDA, and Hybrid Techniques.
+# 📸 High-Performance Parallel Image Convolution Filters  
+**Using Serial, OpenMP, MPI, CUDA, and Hybrid (MPI + CUDA) Techniques**
 
 <img width="902" alt="Image" src="https://github.com/user-attachments/assets/af55a5d8-93dd-4a11-9b1e-b0af86134eae" />
 
-## 🧩 Serial and OpenMP Implementations
+---
 
-### 🔧 Overview
+## 🧩 Overview
 
-This section of the project focuses on implementing **image convolution filters** using:
+This project demonstrates **image convolution filters** implemented using various **high-performance computing** techniques.
 
-- ✅ A **Serial C++** implementation (for baseline performance)
-- 🚀 A **Parallel OpenMP** implementation (for shared-memory acceleration)
+You can:
+- 🟢 Run a **Serial C++ baseline**
+- 🟢 Use **OpenMP** for shared memory parallelism
+- 🟢 Use **MPI** for distributed memory parallelism
+- 🟢 Use **CUDA** for GPU acceleration
+- 🟢 Combine **MPI + CUDA** for a hybrid approach
 
-Both versions apply common convolution filters such as **sharpen**, **blur**, and **edge detection** on grayscale images using the OpenCV library.
+✅ Each implementation applies common filters like **Sharpen**, **Blur**, and **Edge Detection** to a grayscale image using **OpenCV**.
+
+## ✅ Speedup
+
+| Method  | Serial Time | Method Time | Approx. Speedup |
+| ------- | ----------- | ----------- | --------------- |
+| Serial  | 0.39 s      | 0.39 s      | 1×              |
+| OpenMP  | 0.39 s      | 0.12 s      | 3×              |
+| MPI (4) | 0.39 s      | 0.098 s     | 4×              |
+| CUDA    | 0.39 s      | 0.003 s     | 118×            |
+| Hybrid  | 0.39 s      | 0.0037 s    | 107×            |
+
 
 ---
 
-### 🖼️ Input & Output
+## 🖼️ Input & Output
 
-- **Input**: Grayscale `.png` image
-- **Output**: Filtered image saved in the `Results/` directory
-- **Example Kernels**:
-  - **Sharpen**:  
-    ```
-    [  0  -1   0 ]
-    [ -1   5  -1 ]
-    [  0  -1   0 ]
-    ```
-  - **Edge Detection**:  
-    ```
-    [ -1  -1  -1 ]
-    [ -1   8  -1 ]
-    [ -1  -1  -1 ]
-    ```
+- **Input**: Grayscale `.png` image (`Images/input.png`)
+- **Output**: Filtered images saved to the `Results/` folder
+- Each method produces:
+  - `output_<method>_sharpen.png`
+  - `output_<method>_blur.png`
+  - `output_<method>_edge.png`
+
+---
+
+## 🔍 Example Kernels
+
+| Filter | Kernel |
+|--------|--------|
+| **Sharpen** | `[[ 0 -1 0 ], [-1 5 -1], [ 0 -1 0 ]]` |
+| **Blur**    | `[[ 1/9 1/9 1/9 ], [1/9 1/9 1/9], [1/9 1/9 1/9 ]]` |
+| **Edge**    | `[[ -1 -1 -1 ], [-1 8 -1], [-1 -1 -1 ]]` |
+
+---
+
+## ⚙️ Build & Run Instructions
+
+### ✅ Requirements
+
+- OpenCV installed (`sudo apt install libopencv-dev`)
+- `mpic++` for MPI, `nvcc` for CUDA
+- NVIDIA GPU + CUDA drivers for CUDA/Hybrid
 
 ---
 
 
-### ⚙️ Compilation Instructions
 
-> 💡 Ensure `OpenCV` is installed. On Ubuntu:  
-> `sudo apt install libopencv-dev`
 
-#### ✅ Compile Serial Version
+#### ✅ 1️⃣ Serial Version
 ```bash
-g++ Serial/convolution_serial.cpp -o serial_convolution `pkg-config --cflags --libs opencv4`
+g++ Serial/convolution_serial_opencv.cpp -o convolution_serial_opencv `pkg-config --cflags --libs opencv4`
 ````
 
 #### ▶️ Running the Program
 ```bash
-./serial_convolution
+./convolution_serial_opencv
 ````
-
-#### 🚀 Compile OpenMP Version
+#### ✅ 2️⃣ OpenMP Version
 ```bash
-g++ -fopenmp Kernels/convolution_openmp.cpp -o openmp_convolution `pkg-config --cflags --libs opencv4`
+g++ -fopenmp Openmp/convolution_openmp.cpp -o convolution_openmp `pkg-config --cflags --libs opencv4`
 ````
 
 #### ▶️ Running the Program
 ```bash
-./openmp_convolution
+export OMP_NUM_THREADS=4
+./convolution_openmp
 ````
-###  Final results different between serial and openmp
-![Image](https://github.com/user-attachments/assets/3c5c72b2-3ee8-405d-9e41-9159a69fab45)
+```bash
+chmod +x run_openmp_threads.sh
+./run_openmp_threads.sh
+````
+
+#### ✅ 3️⃣ MPI Version
+```bash
+mpic++ MPI/convolution_mpi.cpp -o convolution_mpi `pkg-config --cflags --libs opencv4`
+````
+
+#### ▶️ Running the Program
+```bash
+mpirun -np 4 ./convolution_mpi
+````
+
+#### ✅ 4️⃣ CUDA Version
+```bash
+nvcc CUDA/convolution_cuda.cu -o convolution_cuda `pkg-config --cflags --libs opencv4` -Xcudafe "--diag_suppress=611"
+````
+
+#### ▶️ Running the Program
+```bash
+./convolution_cuda
+````
+
+#### ✅ 5️⃣ Hybrid Version (MPI + CUDA)
+```bash
+nvcc -ccbin mpic++ Hybrid/convolution_mpi_cuda.cu -o convolution_mpi_cuda \
+  -I/usr/lib/x86_64-linux-gnu/openmpi/include \
+  -I/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi \
+  `pkg-config --cflags --libs opencv4` -lmpi
+````
+
+#### ▶️ Running the Program
+```bash
+mpirun -np 2 ./convolution_mpi_cuda
+````
+
+#### ✅ 6️⃣ Compare Accuracy (RMSE)
+```bash
+g++ Compare/compare_rmse.cpp -o compare_rmse `pkg-config --cflags --libs opencv4`
+````
+
+#### ▶️ Running the Program
+```bash
+#!/bin/bash
+echo "Comparing Serial vs MPI..."
+./compare_rmse ../Results/output_serial.png ../Results/output_mpi.png
+````
+```bash
+#!/bin/bash
+echo "Comparing Serial vs CUDA..."
+./compare_rmse ../Results/output_serial.png ../Results/output_cuda.png
+````
+```bash
+#!/bin/bash
+echo "Comparing Serial vs Hybrid..."
+./compare_rmse ../Results/output_serial.png ../Results/output_hybrid.png
+````
+```bash
+chmod +x compare_serial_mpi.sh compare_serial_cuda.sh compare_serial_hybrid.sh
+
+# Or run all at once using a wrapper:
+chmod +x compare_all.sh
+./compare_all.sh
+````
+````
